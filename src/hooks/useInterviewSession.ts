@@ -11,7 +11,7 @@ import type {
   InterviewCursor,
   RealtimeStateUpdateMessage,
 } from "../types/interview";
-import { calculateSessionStats } from "../lib/interviewUtils";
+import { calculateSessionStats, normalizeTranscript } from "../lib/interviewUtils";
 
 export function useInterviewSession(
   interviewId?: string,
@@ -126,7 +126,7 @@ export function useInterviewSession(
     [refreshState]
   );
 
-  // Deduplicated chat turn ingestion
+  // Deduplicated chat turn ingestion with optimistic updates
   const handleChatTurn = useCallback(
     (turn: {
       id?: string;
@@ -136,8 +136,31 @@ export function useInterviewSession(
       text: string;
     }) => {
       setChatTurns((prev) => {
+        const norm = normalizeTranscript(turn.text);
+        if (!norm) return prev;
+
+        // Exact ID duplicate check
         if (turn.id && prev.some((t) => t.id === turn.id)) return prev;
-        if (prev.length > 0 && prev[prev.length - 1].text === turn.text) return prev;
+
+        // If server turn confirms an optimistic user turn, update in-place
+        const optimisticIndex = prev.findIndex(
+          (t) => t.id?.startsWith("optimistic-") && normalizeTranscript(t.text) === norm
+        );
+
+        if (optimisticIndex !== -1) {
+          const updated = [...prev];
+          updated[optimisticIndex] = {
+            id: turn.id || updated[optimisticIndex].id,
+            ...turn,
+          };
+          return updated;
+        }
+
+        // Avoid adding duplicate consecutive text
+        if (prev.length > 0 && normalizeTranscript(prev[prev.length - 1].text) === norm) {
+          return prev;
+        }
+
         return [
           ...prev,
           {

@@ -58,7 +58,7 @@ describe("interviewUtils pure helper tests", () => {
     const stats = calculateSessionStats(sampleSession);
     expect(stats.answeredCount).toBe(1);
     expect(stats.skippedCount).toBe(1);
-    expect(stats.totalCount).toBe(3); // 2 questions + 1 follow-up
+    expect(stats.totalCount).toBe(3);
   });
 
   it("should normalize transcript text accurately", () => {
@@ -85,8 +85,55 @@ describe("interviewUtils pure helper tests", () => {
       ],
     });
 
-    // Does not duplicate question prompt
     const matches = messages.filter((m) => m.content.includes("reconciliation work"));
     expect(matches.length).toBe(1);
+  });
+
+  it("should seamlessly transition optimistic candidate turns when confirmed by DO", () => {
+    const pendingSession: InterviewSession = {
+      ...sampleSession,
+      questions: [
+        {
+          ...sampleSession.questions[0],
+          status: null,
+          answer: null,
+        },
+        sampleSession.questions[1],
+      ],
+    };
+
+    const optimisticTurns = [
+      { id: "optimistic-user-123", from: "user" as const, text: "Diffs nodes by key and type." },
+    ];
+
+    const { messages: pendingMessages } = buildVisibleChatMessages({
+      session: pendingSession,
+      cursor: { questionIndex: 0, followUpIndex: null },
+      extraTurns: optimisticTurns,
+    });
+
+    expect(pendingMessages.some((m) => m.content === "Diffs nodes by key and type.")).toBe(true);
+
+    const confirmedSession: InterviewSession = {
+      ...sampleSession,
+      questions: [
+        {
+          ...sampleSession.questions[0],
+          status: "answered",
+          answer: "Diffs nodes by key and type.",
+        },
+        sampleSession.questions[1],
+      ],
+    };
+
+    const { messages: confirmedMessages } = buildVisibleChatMessages({
+      session: confirmedSession,
+      cursor: { questionIndex: 0, followUpIndex: null },
+      extraTurns: optimisticTurns,
+    });
+
+    const userMessages = confirmedMessages.filter((m) => m.from === "user");
+    expect(userMessages.length).toBe(1);
+    expect(userMessages[0].content).toBe("Diffs nodes by key and type.");
   });
 });

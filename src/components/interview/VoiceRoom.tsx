@@ -160,9 +160,19 @@ function RoomEventsHandler({
         const data = JSON.parse(text);
 
         if (data.type === "live_transcript" && typeof data.transcript === "string") {
-          onLiveTranscript(data.transcript);
-          if (data.isFinal) {
-            setTimeout(() => onLiveTranscript(""), 300);
+          const cleanTranscript = data.transcript.trim();
+          if (data.isFinal && cleanTranscript) {
+            // Optimistic update: commit final candidate speech instantly into the chat list
+            if (onChatTurn) {
+              onChatTurn({
+                id: `optimistic-user-${Date.now()}`,
+                from: "user",
+                text: cleanTranscript,
+              });
+            }
+            onLiveTranscript("");
+          } else {
+            onLiveTranscript(data.transcript);
           }
         }
 
